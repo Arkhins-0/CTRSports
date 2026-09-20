@@ -5,9 +5,11 @@ import {
   isRecord,
   isoDate,
   link,
+  list,
   oneOf,
   optionalText,
   text,
+  withIds,
 } from "@/lib/normalise";
 import type { SectionModule } from "@/lib/sections/types";
 
@@ -31,6 +33,12 @@ export type AnnouncementInk = (typeof ANNOUNCEMENT_INKS)[number];
  * and it is the price of letting the colour be chosen at all.
  */
 export const DEFAULT_ANNOUNCEMENT_COLOUR = "#F7D619";
+
+/** How many cards one band may hold. */
+export const MAX_ANNOUNCEMENTS = 50;
+
+/** How long each card holds before the next one, in milliseconds. */
+export const ANNOUNCEMENT_INTERVAL = 5000;
 
 /**
  * One card, high on the page, pointing at one thing worth interrupting for.
@@ -57,7 +65,9 @@ export const DEFAULT_ANNOUNCEMENT_COLOUR = "#F7D619";
  * this card without anyone opening the page. Fill one in only when the page
  * needs to say something the article does not.
  */
-export type Announcement = {
+export type AnnouncementCard = {
+  /** Stable across a save, so a repeater row does not swap places as you type. */
+  id: string;
   kicker: string;
   title: string;
   body: string;
@@ -77,7 +87,26 @@ export type Announcement = {
   date: string;
 };
 
-export const BLANK_ANNOUNCEMENT: Announcement = {
+/**
+ * The band: the cards, shown one at a time.
+ *
+ * ── Why a list rather than more sections ──────────────────────────────────
+ *
+ * This section is `multiple`, so a page could always carry several of these —
+ * and that is still the right way to put two announcements in two DIFFERENT
+ * places. What it could not do is put two in the SAME place. Stacked, the second
+ * card pushes the page down and the third makes a wall of colour where the
+ * design wanted one interruption, and the reader scrolls past all of them.
+ *
+ * A list in one band is the other arrangement: one card's worth of page, however
+ * many things there are to say, each getting the whole of it in turn. That is a
+ * property of the band rather than of the page, which is why it lives here and
+ * not in the number of sections somebody added.
+ */
+export type Announcement = { items: AnnouncementCard[] };
+
+/** A new card. The id is the caller's — only it knows what is unique. */
+export const BLANK_ANNOUNCEMENT_CARD: Omit<AnnouncementCard, "id"> = {
   kicker: "",
   title: "",
   body: "",
@@ -94,41 +123,76 @@ export const BLANK_ANNOUNCEMENT: Announcement = {
   date: "",
 };
 
+/**
+ * The fields ONE card carries, used only to recognise a document written before
+ * this band held a list. See `normalise`.
+ */
+const CARD_KEYS = Object.keys(BLANK_ANNOUNCEMENT_CARD);
+
+function card(entry: Record<string, unknown>): AnnouncementCard {
+  const d = BLANK_ANNOUNCEMENT_CARD;
+
+  return {
+    id: optionalText(entry.id, 64),
+    kicker: text(entry.kicker, d.kicker),
+    title: text(entry.title, d.title),
+    body: text(entry.body, d.body, BODY_MAX),
+    // "" rather than a placeholder, unlike every other picture. Blank here is
+    // not "no picture", it is "use the article's" — and a placeholder would be
+    // indistinguishable from a real choice, so the fallback in the renderer
+    // could never fire.
+    image: image(entry.image, ""),
+    imageAlt: text(entry.imageAlt, d.imageAlt),
+    colour: hexColour(entry.colour, DEFAULT_ANNOUNCEMENT_COLOUR),
+    ink: oneOf(entry.ink, ANNOUNCEMENT_INKS, "auto"),
+    // "" rather than "#": a card pointing nowhere should draw no button, not a
+    // button that scrolls to the top of the page.
+    href: link(entry.href, ""),
+    // Free text, where every other glyph comes from a closed set drawn by a
+    // component. It is an emoji rather than an icon because that is what was
+    // asked for — the system font draws it, so there is nothing to ship — and
+    // 12 characters is room for a zero-width-joiner sequence without being
+    // room for a sentence.
+    emoji: optionalText(entry.emoji, 12),
+    ctaLabel: text(entry.ctaLabel, d.ctaLabel, 60),
+    date: isoDate(entry.date),
+  };
+}
+
 export const announcement: SectionModule<Announcement> = {
   type: "announcement",
   label: "Announcement",
-  hint: "One card for the one thing worth interrupting for — an article, a deck, or anywhere else.",
+  hint: "Cards for the things worth interrupting for, shown one at a time — an article, a deck, or anywhere else.",
   surface: ["home"],
   multiple: true,
   anchor: "announcement",
-  blank: () => ({ ...BLANK_ANNOUNCEMENT }),
+  blank: () => ({ items: [] }),
   normalise: (raw) => {
-    const d = BLANK_ANNOUNCEMENT;
     const value = isRecord(raw) ? raw : {};
 
+    /*
+     * A document saved before this band held a list IS one card, stored flat —
+     * `{ kicker, title, colour, … }` with no `items` anywhere in it. Reading
+     * that as an empty list would take every announcement on every live page
+     * off the site on the next deploy, so it is recognised and read as a list
+     * of one instead.
+     *
+     * Recognised by its KEYS rather than by the absence of `items`, because
+     * those are two different documents: `{}` is a band somebody has just added
+     * and left empty, and that one really is a list of nothing.
+     *
+     * There is no migration to write. `normalise` runs on write as well as on
+     * read, so the first save of a page rewrites its old card into the new
+     * shape, and until then it simply reads correctly.
+     */
+    const stored = Array.isArray(value.items)
+      ? value.items
+      : CARD_KEYS.some((key) => key in value)
+        ? [value]
+        : [];
+
     return {
-      kicker: text(value.kicker, d.kicker),
-      title: text(value.title, d.title),
-      body: text(value.body, d.body, BODY_MAX),
-      // "" rather than a placeholder, unlike every other picture. Blank here is
-      // not "no picture", it is "use the article's" — and a placeholder would be
-      // indistinguishable from a real choice, so the fallback in the renderer
-      // could never fire.
-      image: image(value.image, ""),
-      imageAlt: text(value.imageAlt, d.imageAlt),
-      colour: hexColour(value.colour, DEFAULT_ANNOUNCEMENT_COLOUR),
-      ink: oneOf(value.ink, ANNOUNCEMENT_INKS, "auto"),
-      // "" rather than "#": a card pointing nowhere should draw no button, not a
-      // button that scrolls to the top of the page.
-      href: link(value.href, ""),
-      // Free text, where every other glyph comes from a closed set drawn by a
-      // component. It is an emoji rather than an icon because that is what was
-      // asked for — the system font draws it, so there is nothing to ship — and
-      // 12 characters is room for a zero-width-joiner sequence without being
-      // room for a sentence.
-      emoji: optionalText(value.emoji, 12),
-      ctaLabel: text(value.ctaLabel, d.ctaLabel, 60),
-      date: isoDate(value.date),
+      items: withIds(list(stored, MAX_ANNOUNCEMENTS, card, []), "announcement"),
     };
   },
 };
