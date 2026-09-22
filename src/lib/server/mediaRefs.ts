@@ -77,6 +77,12 @@ const TARGETS: Target[] = [
   { table: "articles", columns: [{ name: "cover_image" }, { name: "body", json: true }] },
   /* An event is the same two shapes as an article, and for the same reason. */
   { table: "events", columns: [{ name: "cover_image" }, { name: "body", json: true }] },
+  /*
+   * A season has a cover and nothing else. It was missing from here until the
+   * storage move, when one season's cover was the only address left on the old
+   * host after every other table had been rewritten.
+   */
+  { table: "seasons", columns: [{ name: "cover_image" }] },
 ];
 
 /** `strpos`, not LIKE: the needle is a literal and `%` and `_` are not wildcards in it. */

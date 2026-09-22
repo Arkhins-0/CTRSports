@@ -46,6 +46,8 @@ import { getSql } from "@/lib/server/db";
  *   tracks               photo_url and map_url; links moved to track_links.href
  *   forms                fields and sections stay JSONB, so still text
  *   articles             cover_image is a column, body is a document
+ *   events               the same two shapes as an article
+ *   seasons              cover_image, and nothing else
  *
  * The originally-stated reasoning — "pull the text once, match in memory" —
  * therefore only applies to the three that are still documents. The rest are
@@ -68,7 +70,7 @@ import { getSql } from "@/lib/server/db";
  */
 
 export type UsageRef = {
-  kind: "content" | "deck" | "sport" | "track" | "form" | "article" | "event" | "source";
+  kind: "content" | "deck" | "sport" | "track" | "form" | "article" | "event" | "season" | "source";
   label: string;
   /**
    * The SLUG of the site this reference belongs to, or null for one that
@@ -140,7 +142,7 @@ export async function findUsage(keys: string[]): Promise<KeyUsage[]> {
   const sql = getSql();
   const encoded = wanted.map((key) => encodeURI(key));
 
-  const [sections, banners, posts, partners, deckPages, columns, documents, articles, events] =
+  const [sections, banners, posts, partners, deckPages, columns, documents, articles, events, seasons] =
     await Promise.all([
     sql`SELECT si.slug AS site, si.name AS site_name, ps.type, ps.data::text AS blob
            FROM ctr.page_sections ps
@@ -241,6 +243,18 @@ export async function findUsage(keys: string[]): Promise<KeyUsage[]> {
          WHERE EXISTS (SELECT 1 FROM unnest(${wanted}::text[]) AS k(key)
                         WHERE position(k.key in coalesce(e.cover_image, '')) > 0
                            OR position(k.key in e.body::text) > 0)`,
+
+    /*
+     * A season is a cover and nothing else. It was missing from this scan
+     * until the storage move found one season's cover as the last address on
+     * the old host — the same omission that let a season's picture be deleted
+     * out from under it without a warning.
+     */
+    sql`SELECT s.name, si.slug AS site, coalesce(s.cover_image, '') AS blob
+          FROM ctr.seasons s
+          JOIN ctr.sites si ON si.id = s.site_id
+         WHERE EXISTS (SELECT 1 FROM unnest(${wanted}::text[]) AS k(key)
+                        WHERE position(k.key in coalesce(s.cover_image, '')) > 0)`,
   ]);
 
   const sectionRows = sections as {
@@ -310,6 +324,14 @@ export async function findUsage(keys: string[]): Promise<KeyUsage[]> {
     scan(row.blob, () => ({
       kind: "event",
       label: `Event: ${row.title || "Untitled"}`,
+      site: row.site,
+    }));
+  }
+
+  for (const row of seasons as { name: string; site: string; blob: string }[]) {
+    scan(row.blob, () => ({
+      kind: "season",
+      label: `Season: ${row.name || "Untitled"}`,
       site: row.site,
     }));
   }

@@ -118,6 +118,8 @@ const SCHEMAS = {
       columns: [{ name: "cover_image" }, { name: "body", json: true }] },
     { table: "events", what: "event covers and pictures inside them",
       columns: [{ name: "cover_image" }, { name: "body", json: true }] },
+    /* 0021. A cover and nothing else. */
+    { table: "seasons", what: "season covers", columns: [{ name: "cover_image" }] },
   ],
 };
 
@@ -275,7 +277,7 @@ try {
        * database that predates them is not a database this is pointed at by
        * mistake — it is one that simply has nothing of theirs to rewrite.
        */
-      if (table === "articles" || table === "events") {
+      if (table === "articles" || table === "events" || table === "seasons") {
         console.log(`  ${table.padEnd(20)} —  not on this database yet (${what})`);
         continue;
       }
