@@ -39,6 +39,18 @@ export const ENTRY_PREFIX = "ctr-sports/entries/";
 const BUCKET = process.env.S3_BUCKET;
 const REGION = process.env.S3_REGION;
 
+/**
+ * Where the bucket lives, when it is not on AWS.
+ *
+ * The media moved from S3 to Neon's object storage, which speaks the same
+ * protocol at a different address. Set, this does two things: points the
+ * client at that address, and switches it to PATH-STYLE requests —
+ * `https://host/bucket/key` rather than `https://bucket.host/key` — because
+ * Neon's endpoint answers only the first form. Unset, everything below is the
+ * plain AWS client it always was.
+ */
+const ENDPOINT = process.env.S3_ENDPOINT?.replace(/\/+$/, "") || "";
+
 let client: S3Client | null = null;
 
 function getClient(): S3Client {
@@ -53,7 +65,11 @@ function getClient(): S3Client {
     );
   }
 
-  client = new S3Client({ region: REGION, credentials: { accessKeyId, secretAccessKey } });
+  client = new S3Client({
+    region: REGION,
+    credentials: { accessKeyId, secretAccessKey },
+    ...(ENDPOINT ? { endpoint: ENDPOINT, forcePathStyle: true } : {}),
+  });
   return client;
 }
 
@@ -80,15 +96,19 @@ export function isS3Configured(): boolean {
  * domain and someone may already have it set; an env var that quietly stops
  * being read is worse than one that is merely redundant.
  *
- * Neither set falls back to the virtual-hosted S3 address, which is today's
- * behaviour and works as long as the bucket stays publicly readable.
+ * Neither set falls back to the bucket's own public address — the path-style
+ * one under `S3_ENDPOINT` when that is set, the virtual-hosted S3 one when it
+ * is not — which works as long as the bucket stays publicly readable.
  */
 export function publicUrl(key: string): string {
   const base = (
     process.env.S3_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_MEDIA_BASE_URL
   )?.replace(/\/+$/, "");
 
-  return base ? `${base}/${key}` : `https://${BUCKET}.s3.${REGION}.amazonaws.com/${key}`;
+  if (base) return `${base}/${key}`;
+  return ENDPOINT
+    ? `${ENDPOINT}/${BUCKET}/${key}`
+    : `https://${BUCKET}.s3.${REGION}.amazonaws.com/${key}`;
 }
 
 /**

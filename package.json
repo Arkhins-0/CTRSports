@@ -16,6 +16,7 @@
     "db:types": "node --env-file=.env --env-file-if-exists=.env.local scripts/gen-types.mjs",
     "migrate:media": "node --env-file=.env --env-file-if-exists=.env.local scripts/migrate-media-domain.mjs",
     "migrate:media:sites": "node --env-file=.env --env-file-if-exists=.env.local scripts/migrate-media-sites.mjs",
+    "migrate:storage": "node --env-file=.env --env-file-if-exists=.env.local scripts/migrate-storage.mjs",
     "create-admin": "node --env-file=.env --env-file-if-exists=.env.local scripts/create-admin.mjs",
     "check:forms": "tsx scripts/check-forms.ts",
     "check:decks": "tsx scripts/check-decks.ts",
