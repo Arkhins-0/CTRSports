@@ -5,7 +5,7 @@ import { deckHref } from "@/lib/decks";
 import { getDeckBySlug } from "@/lib/server/decksRepo";
 import type { Site } from "@/lib/sites";
 import { Reveal } from "@/components/ui/Reveal";
-import { DeckPages } from "../deck/DeckPages";
+import { DeckViewer } from "../deck/DeckViewer";
 import { SiteShell } from "../SiteShell";
 
 /**
@@ -87,7 +87,7 @@ export async function DeckDetail({ site, slug }: { site: Site; slug: string }) {
             )}
 
             {deck.pages.length > 0 ? (
-              <DeckPages deck={deck} />
+              <DeckViewer deck={deck} />
             ) : (
               <div className="panel-card mx-auto max-w-2xl p-8 text-center sm:p-10">
                 <p className="body-copy">There is nothing in this deck yet. Please check back.</p>
